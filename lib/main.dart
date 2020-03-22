@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:location/location.dart';
 import 'package:poly/poly.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 void main() => runApp(MyApp());
 
 Location location = new Location();
+FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
 
 bool _serviceEnabled;
 PermissionStatus _permissionGranted;
@@ -54,6 +56,7 @@ class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
   double _latitude = 0;
   double _longitude = 0;
+  bool _isUserInsideFence = false;
   Polygon copyOfFirstPolygon = Polygon([
     // Point(18.4851825, 73.8498851),
     // Point(18.4849214, 73.8498675),
@@ -68,6 +71,49 @@ class _MyHomePageState extends State<MyHomePage> {
     Point(25.100993, 55.173519),
     Point(25.101207, 55.173328),
   ]);
+
+  @override
+  initState() {
+    super.initState();
+
+    var initializationSettingsAndroid =
+        new AndroidInitializationSettings('app_icon');
+    var initializationSettingsIOS = new IOSInitializationSettings();
+    var initializationSettings = new InitializationSettings(
+        initializationSettingsAndroid, initializationSettingsIOS);
+
+    flutterLocalNotificationsPlugin = new FlutterLocalNotificationsPlugin();
+    flutterLocalNotificationsPlugin.initialize(initializationSettings,
+        onSelectNotification: onSelectNotification);
+  }
+
+  Future onSelectNotification(String payload) async {
+    showDialog(
+        context: context,
+        builder: (_) => new AlertDialog(
+            title: const Text("Here is your payload"),
+            content: new Text("Payload: $payload")));
+  }
+
+  // Method 1
+  Future _showNotificationWithSound(isUserInsideFence) async {
+    var androidPlatformChannelSpecifics = new AndroidNotificationDetails(
+        'your channel id', 'your channel name', 'your channel description',
+        sound: 'slow_spring_board',
+        importance: Importance.Max,
+        priority: Priority.High);
+    var iOSPlatformChannelSpecifics =
+        new IOSNotificationDetails(sound: "slow_spring_board.aiff");
+    var platformChannelSpecifics = new NotificationDetails(
+        androidPlatformChannelSpecifics, iOSPlatformChannelSpecifics);
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      'User fence status changed',
+      'user inside fence: $isUserInsideFence',
+      platformChannelSpecifics,
+      payload: 'Custom_Sound',
+    );
+  }
 
   void _incrementCounter() async {
     _serviceEnabled = await location.serviceEnabled();
@@ -95,6 +141,7 @@ class _MyHomePageState extends State<MyHomePage> {
       _counter = 0;
       _latitude = 0;
       _longitude = 0;
+      _isUserInsideFence = false;
     });
 
     // _locationData = await location.getLocation();
@@ -102,8 +149,15 @@ class _MyHomePageState extends State<MyHomePage> {
 
     location.onLocationChanged().listen((LocationData currentLocation) {
       // print(currentLocation);
-      print(
-          "$_counter. Polygon a contains :(${currentLocation.latitude}, ${currentLocation.longitude}) - ${copyOfFirstPolygon.contains(currentLocation.latitude, currentLocation.longitude)}");
+
+      var newIsUserInsideFence = copyOfFirstPolygon.contains(
+          currentLocation.latitude, currentLocation.longitude);
+
+      if (newIsUserInsideFence != _isUserInsideFence) {
+        print("state is changing");
+        _showNotificationWithSound(newIsUserInsideFence);
+      }
+
       setState(() {
         // This call to setState tells the Flutter framework that something has
         // changed in this State, which causes it to rerun the build method below
@@ -113,7 +167,12 @@ class _MyHomePageState extends State<MyHomePage> {
         _counter++;
         _latitude = currentLocation.latitude;
         _longitude = currentLocation.longitude;
+        _isUserInsideFence = copyOfFirstPolygon.contains(
+            currentLocation.latitude, currentLocation.longitude);
       });
+
+      print(
+          "$_counter. Polygon a contains :(${currentLocation.latitude}, ${currentLocation.longitude}) - $_isUserInsideFence");
     });
   }
 
@@ -161,8 +220,13 @@ class _MyHomePageState extends State<MyHomePage> {
               'Longitude: $_longitude',
             ),
             Text(
-              "$_counter. Polygon a contains :($_latitude, $_longitude) - ${copyOfFirstPolygon.contains(_latitude, _longitude)}",
-              style: Theme.of(context).textTheme.display1,
+                "$_counter. Polygon a contains :($_latitude, $_longitude) - ${copyOfFirstPolygon.contains(_latitude, _longitude)}"),
+            // new RaisedButton(
+            //   onPressed: _showNotificationWithSound,
+            //   child: new Text('Show Notification With Sound'),
+            // ),
+            new SizedBox(
+              height: 30.0,
             ),
           ],
         ),
